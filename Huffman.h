@@ -34,16 +34,18 @@ private:
 
     void generateCodes(const NodePtr& node , string str) ; 
     int calcWPL(const NodePtr& node , int depth) const ; 
-    void printTree(const NodePtr& node , int indent) const ; 
+    void buildTree(const map<char , int>& freqs) ;
+
+
 
 public:
-    HuffManTree() ; 
-
-    void buildTree(const map<char , int>& freqs) ; 
     void encode(const string& inputFile , const string& codeFile , const string& outFIle , bool verbose) ;
     void decode(const string& inputFile , const string& codeFile , const string& outFIle , bool verbose) ; 
-    void showTreeInfo() const ; 
+    HuffManTree() ; 
     string getCode(const char& c) const ; 
+    void showWPL() const ; 
+    void printTree(const NodePtr& node, const std::string& prefix, bool isLeft) const ; 
+    void showTreeInfo() const ; 
 };
 
 
