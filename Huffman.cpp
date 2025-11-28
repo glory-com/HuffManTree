@@ -38,32 +38,6 @@ int HuffManTree::calcWPL(const NodePtr& node , int depth) const {
     return calcWPL(node -> left , depth + 1) + calcWPL(node -> right , depth + 1) ; 
 }
 
-void HuffManTree::printTree(const NodePtr& node , int indent) const {
-
-    if (node != nullptr) {
-        if (node->right) printTree(node->right , indent + 4);
-        
-        if (indent) {
-            cout << setw(indent) << " ";
-        }
-        
-        if (node->right) cout << " /\n" << setw(indent) << " ";
-        
-        if (node->isLeaf()) {
-            if (node->ch == '\n') cout << "\\n" << "(" << node->freq << ")\n";
-            else if (node->ch == ' ') cout << "Sp" << "(" << node->freq << ")\n";
-            else cout << node->ch << "(" << node->freq << ")\n";
-        } else {
-            cout << "O" << "(" << node->freq << ")\n";
-        }
-
-        if (node->left) {
-            cout << setw(indent) << " " << " \\\n";
-            printTree(node->left , indent + 4);
-        }
-    }
-}
-
 void HuffManTree::buildTree(const map<char , int>& freqs){
     freqMap = freqs ;
 
@@ -227,8 +201,10 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
         showTreeInfo() ; 
     }
 }
+
 void HuffManTree::showTreeInfo() const {
-    cout << "showTreeInfo function not yet implemented." << endl;
+    showWPL() ; 
+    printTree(root , "" , true) ; 
 }
 
 string HuffManTree::getCode(const char& c) const{
@@ -238,5 +214,52 @@ string HuffManTree::getCode(const char& c) const{
         return it->second;
     }
     return "";
+}
+
+
+void HuffManTree::showWPL() const { 
+    int wpl = calcWPL(root , 0) ;
+    cout << "the WPL of this Huffman tree is : "  << wpl << endl ;  
+
+}
+
+void HuffManTree::printTree(const NodePtr& node, const std::string& prefix, bool isLeft) const {
+    if (node == nullptr) {
+        return;
+    }
+
+
+    std::cout << prefix;
+    std::cout << (isLeft ? "|-- " : "`-- "); 
+
+
+    std::cout << "[";
+    if (node->isLeaf()) {
+        char ch = node->ch;
+
+        if (ch == '\n') std::cout << "\\n";
+        else if (ch == '\r') std::cout << "\\r";
+        else if (ch == ' ') std::cout << "Sp";
+        else if (ch >= 32 && ch <= 126) std::cout << ch ;
+        else std::cout << (int)(unsigned char)ch; 
+
+        std::cout << "]:" << node->freq << ' ' << getCode(ch) ; 
+    } else {
+        std::cout << "O]:" << node->freq; 
+    }
+    std::cout << std::endl;
+
+    std::string newPrefix = prefix + (isLeft ? "|   " : "    ");
+
+    if (node->right) {
+  
+        printTree(node->right, newPrefix, false); 
+    }
+
+
+    if (node->left) {
+
+        printTree(node->left, newPrefix, true); 
+    }
 }
 

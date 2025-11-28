@@ -6,5 +6,6 @@ g++ main.cpp Huffman.cpp -o HuffMan.exe
 
 .\Huffman.exe -d  .\out.txt .\code.txt .\decoderFile.txt 
 
+.\Huffman.exe -v -e .\TextBase\text.txt code.txt .\out.txt
 
 

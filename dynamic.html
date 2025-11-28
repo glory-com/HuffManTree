@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>动态哈夫曼树可视化 (HTML/JS)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #282c34;
+            color: #dcdcdc;
+        }
+        #controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #3c3f41;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        #huffmanCanvas {
+            border: 1px solid #4f5358;
+            background: #1e1e1e;
+            display: block;
+            margin: 0 auto;
+        }
+        /* SVG 节点的通用样式 */
+        .node circle {
+            fill: #61afef;
+            stroke: #4f5358;
+            stroke-width: 1.5px;
+        }
+        .node rect {
+            fill: #98c379;
+            stroke: #4f5358;
+            stroke-width: 1.5px;
+        }
+        .node text {
+            font-weight: bold;
+            font-size: 10px;
+            fill: #000;
+        }
+        .link {
+            stroke: #5a6477;
+            stroke-width: 1.5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>动态哈夫曼编码演示</h1>
+    <p>（每次输入字符，树结构都会根据新的频率实时重建）</p>
+
+    <div id="controls">
+        <input type="text" id="inputChar" maxlength="1" placeholder="输入单个字符">
+        <button onclick="processChar()">处理并更新树</button>
+        <button onclick="resetTree()">重置</button>
+        <p>输入流: <span id="inputStream"></span></p>
+    </div>
+    
+    <svg id="huffmanCanvas" width="1000" height="500"></svg>
+
+    <script>
+        // === 1. 数据结构 ===
+        class Node {
+            constructor(char, freq, left = null, right = null) {
+                this.char = char; // 字符或内部节点标记 ('\0' 或 ' ')
+                this.freq = freq;
+                this.left = left;
+                this.right = right;
+            }
+            isLeaf() {
+                return this.left === null && this.right === null;
+            }
+        }
+
+        // 最小堆比较器 (频率小的排前面)
+        class MinHeap {
+            constructor(comparator = (a, b) => a.freq - b.freq) {
+                this._heap = [];
+                this._comparator = comparator;
+            }
+            size() { return this._heap.length; }
+            push(item) { this._heap.push(item); this._bubbleUp(); }
+            peek() { return this._heap[0]; }
+            pop() {
+                if (this.size() === 0) return null;
+                const top = this._heap[0];
+                const last = this._heap.pop();
+                if (this.size() > 0) {
+                    this._heap[0] = last;
+                    this._bubbleDown();
+                }
+                return top;
+            }
+            _bubbleUp() {
+                let index = this.size() - 1;
+                while (index > 0) {
+                    let parentIndex = Math.floor((index - 1) / 2);
+                    if (this._comparator(this._heap[index], this._heap[parentIndex]) < 0) {
+                        [this._heap[index], this._heap[parentIndex]] = [this._heap[parentIndex], this._heap[index]];
+                        index = parentIndex;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            _bubbleDown() {
+                let index = 0;
+                while (true) {
+                    let leftChildIndex = 2 * index + 1;
+                    let rightChildIndex = 2 * index + 2;
+                    let smallest = index;
+
+                    if (leftChildIndex < this.size() && this._comparator(this._heap[leftChildIndex], this._heap[smallest]) < 0) {
+                        smallest = leftChildIndex;
+                    }
+                    if (rightChildIndex < this.size() && this._comparator(this._heap[rightChildIndex], this._heap[smallest]) < 0) {
+                        smallest = rightChildIndex;
+                    }
+
+                    if (smallest !== index) {
+                        [this._heap[index], this._heap[smallest]] = [this._heap[smallest], this._heap[index]];
+                        index = smallest;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+
+        // === 2. 核心算法 (模拟静态 Huffman 重建) ===
+        class Coder {
+            constructor() {
+                this.freqs = new Map();
+                this.root = null;
+                this.inputStream = "";
+                this.canvas = document.getElementById('huffmanCanvas');
+                this.canvasWidth = 1000;
+                this.canvasHeight = 500;
+            }
+
+            process(char) {
+                this.inputStream += char;
+                this.updateFrequencies(char);
+                this.buildTree();
+                this.draw();
+            }
+
+            updateFrequencies(char) {
+                this.freqs.set(char, (this.freqs.get(char) || 0) + 1);
+            }
+
+            buildTree() {
+                if (this.freqs.size === 0) {
+                    this.root = null;
+                    return;
+                }
+
+                const pq = new MinHeap();
+                for (const [char, freq] of this.freqs) {
+                    pq.push(new Node(char, freq));
+                }
+
+                // Handle single character edge case
+                if (pq.size() === 1) {
+                    const only = pq.pop();
+                    this.root = new Node('\0', only.freq, only, null);
+                    return;
+                }
+
+                while (pq.size() > 1) {
+                    const left = pq.pop();
+                    const right = pq.pop();
+                    const parent = new Node('\0', left.freq + right.freq, left, right);
+                    pq.push(parent);
+                }
+                this.root = pq.pop();
+            }
+
+            // === 3. 实时绘图逻辑 ===
+            draw() {
+                // 清空画布
+                this.canvas.innerHTML = '';
+                if (!this.root) return;
+
+                // 使用一个简单的递归布局计算坐标
+                const coords = [];
+                let leafX = 50; // 初始X坐标
+
+                // 递归计算坐标
+                const calculateLayout = (node, depth) => {
+                    if (!node) return;
+
+                    // 1. 递归左子树
+                    calculateLayout(node.left, depth + 1);
+
+                    // 2. 确定当前节点X坐标
+                    const x = node.isLeaf() ? leafX : (node.left ? node.left.x : node.right.x);
+                    const y = depth * 80 + 30; // 深度决定Y坐标
+
+                    // 如果是叶子节点，确定最终X坐标并增加间隔
+                    if (node.isLeaf()) {
+                        node.x = leafX;
+                        leafX += 60; // 叶子节点固定间隔
+                    } else {
+                        // 内部节点X坐标取左右子节点的中间
+                        node.x = (node.left.x + node.right.x) / 2;
+                    }
+                    node.y = y;
+                    coords.push(node);
+
+                    // 3. 递归右子树
+                    calculateLayout(node.right, depth + 1);
+                };
+                
+                // 启动布局计算
+                calculateLayout(this.root, 0);
+
+                // 渲染元素
+                for (const node of coords) {
+                    // 绘制连线
+                    if (node.left) this.drawLine(node, node.left, '0');
+                    if (node.right) this.drawLine(node, node.right, '1');
+
+                    // 绘制节点
+                    this.drawNode(node);
+                }
+            }
+
+            // 绘制节点
+            drawNode(node) {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                svg.classList.add('node');
+                svg.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+
+                const labelText = node.char === '\0' ? node.freq : (node.char === ' ' ? 'Sp' : node.char);
+                
+                let element;
+                // 叶子节点用矩形，内部节点用圆形 (为了区分)
+                if (node.isLeaf() && node.char !== '\0') {
+                     element = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                     element.setAttribute('x', -20);
+                     element.setAttribute('y', -10);
+                     element.setAttribute('width', 40);
+                     element.setAttribute('height', 20);
+                } else {
+                     element = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                     element.setAttribute('r', 15);
+                }
+                
+                svg.appendChild(element);
+
+                // 文本：字符/频率
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.textContent = `${labelText} (${node.freq})`;
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('alignment-baseline', 'middle');
+                text.setAttribute('fill', '#fff'); // 内部节点的文本颜色
+                svg.appendChild(text);
+
+                this.canvas.appendChild(svg);
+            }
+
+            // 绘制连线
+            drawLine(parent, child, code) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.classList.add('link');
+                line.setAttribute('x1', parent.x);
+                line.setAttribute('y1', parent.y);
+                line.setAttribute('x2', child.x);
+                line.setAttribute('y2', child.y);
+                this.canvas.appendChild(line);
+
+                // 绘制编码标签 (0 或 1)
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.textContent = code;
+                text.setAttribute('x', (parent.x + child.x) / 2);
+                text.setAttribute('y', (parent.y + child.y) / 2 - 5);
+                text.setAttribute('fill', '#e06c75'); 
+                text.setAttribute('font-size', '12px');
+                this.canvas.appendChild(text);
+            }
+
+            reset() {
+                this.freqs = new Map();
+                this.root = null;
+                this.inputStream = "";
+                this.canvas.innerHTML = '';
+            }
+        }
+
+        // === 4. 界面控制 ===
+        const huffmanCoder = new Coder();
+        
+        function processChar() {
+            const input = document.getElementById('inputChar');
+            const char = input.value.trim();
+            if (char.length === 1) {
+                huffmanCoder.process(char);
+                document.getElementById('inputStream').textContent = huffmanCoder.inputStream;
+                input.value = ''; // 清空输入框
+            } else {
+                alert("请输入单个字符！");
+            }
+        }
+
+        function resetTree() {
+            huffmanCoder.reset();
+            document.getElementById('inputStream').textContent = "";
+        }
+
+        // 监听回车键
+        document.getElementById('inputChar').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                processChar();
+            }
+        });
+
+        // 初始绘制清空
+        huffmanCoder.draw();
+    </script>
+</body>
+</html>
