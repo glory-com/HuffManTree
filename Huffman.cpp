@@ -112,9 +112,13 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
     map<char , int> freqs ; 
     originalSize = 0 ; 
 
+    char prev = 0 ; 
+
     while(in.get(ch)){
-        freqs[ch]++ ;       
+        char diff = ch - prev ;
+        freqs[diff]++ ;       
         originalSize++ ; 
+        prev = ch ;             
     }
     in.close() ; 
     
@@ -129,11 +133,17 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
     }
 
     for (const auto& pair : freqs) {
-        codeOut << static_cast<int>(static_cast<unsigned char>(pair.first)) ;
+        char ch = pair.first;
+        if (isalpha(static_cast<unsigned char>(ch))){
+            codeOut << ch; 
+        } else {
+            codeOut << static_cast<int>(static_cast<unsigned char>(ch)) ;
+        }
+
         codeOut << " " ; 
-        codeOut << pair.second ; 
+        codeOut << pair.second ;
         codeOut << " " ; 
-        codeOut << huffManCode.at(pair.first);
+        codeOut << huffManCode.at(ch);
         codeOut << endl; 
     }
     codeOut.close() ; 
@@ -147,11 +157,14 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
     }
 
     compressSize = 0 ; 
+    prev = 0 ; 
 
     while(in.get(ch)){
-        const string& code = huffManCode.at(ch) ; 
+        char diff = ch - prev ; 
+        const string& code = huffManCode.at(diff) ; 
         out << code ; 
         compressSize += code.length() ; 
+        prev = ch ;          
     }
 
     in.close() ; 
@@ -182,7 +195,14 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
     string code ; 
     
     while(codeIn >> s >> freq >> code){
-        char ch = static_cast<char>(stoi(s));
+        char ch;
+        if (s.length() == 1 && isalpha(s[0])) {
+            ch = s[0];
+        } 
+        else {
+            int asciiVal = stoi(s);
+            ch = static_cast<char>(asciiVal);
+        }
         freqs[ch] = freq;
     }
     codeIn.close() ; 
@@ -204,6 +224,7 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
 
     NodePtr current = root ; 
     char ch ; 
+    char prev = 0 ; 
     
     while(in.get(ch)){
         if(ch != '0' && ch != '1') continue ;
@@ -214,8 +235,12 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
         if (!current) break; 
 
         if(current -> isLeaf()){
-            char originalChar = current -> getChar() ; 
-            out.put(originalChar) ;         
+            char diff = current -> getChar() ; 
+            char original = prev + diff ;    
+            
+            out.put(original) ;         
+            
+            prev = original ;                
             current = root ; 
         }
     }
