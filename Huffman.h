@@ -75,9 +75,8 @@ public:
     void showWPL() const ; 
     void printTree(const NodePtr& node, const std::string& prefix, bool isLeft) const ; 
     void showTreeInfo() const ; 
+    
 };
-
-
 
 
 

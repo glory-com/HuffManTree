@@ -323,3 +323,4 @@ int BitReader::readBit(){
     return bit ;
 }
 
+
