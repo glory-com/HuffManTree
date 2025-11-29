@@ -3,8 +3,10 @@
 using namespace std ; 
 
 
-Node::Node(char c , int f) : ch(c) , freq(f) , left(nullptr) , right(nullptr) {} ; 
-HuffManTree::HuffManTree() : root(nullptr) , originalSize(0) , compressSize(0) {}
+Node::Node(char c , int f) : ch(c) , freq(f) , left(nullptr) , right(nullptr) {} 
+HuffManTree::HuffManTree() : root(nullptr) , originalSize(0) , compressSize(0) {} 
+BitWriter::BitWriter(ostream& os) : out(os), buffer(0), count(0) {}
+BitReader::BitReader(ifstream& is) : in(is), buffer(0), count(0) {} 
 
 
 int Node::getFreq() const {
@@ -89,6 +91,7 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
     while(in.get(ch)){
         freqs[ch]++ ;       
         originalSize++ ; 
+        totalChars++ ; 
     }
     in.close() ; 
     
@@ -96,11 +99,13 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
 
     buildTree(freqs) ; 
 
-    ofstream codeOut(codeFile) ; 
+    ofstream codeOut(codeFile , ios::binary) ; 
     if(!codeOut){
         cerr << "ERROR:CANT OPEN CODE FILE" << endl; 
         return; 
     }
+
+    codeOut << "HEAD " << totalChars << endl ; 
 
     for (const auto& pair : freqs) {
         codeOut << static_cast<int>(static_cast<unsigned char>(pair.first)) ;
@@ -113,29 +118,33 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
     codeOut.close() ; 
 
 
+
     in.open(inputFile , ios::binary) ; 
-    ofstream out(outFile) ; 
+    ofstream out(outFile , ios::binary) ; 
     if(!out){
         cerr << "ERROR:CANT OPEN OUT FILE" << endl; 
         return; 
     }
 
+    BitWriter bw(out) ; 
     compressSize = 0 ; 
 
     while(in.get(ch)){
         const string& code = huffManCode.at(ch) ; 
-        out << code ; 
+        for(char bc : code){
+            bw.writeBit(bc - '0') ; 
+        } 
         compressSize += code.length() ; 
     }
+    bw.flush() ;
 
     in.close() ; 
     out.close() ; 
+
+    long long compressedBytes = (compressSize + 7) / 8 ; 
+    double rate = (double) compressedBytes / originalSize * 100.0 ; 
     
-    double rate = 0.0;
-    if (originalSize > 0) {
-        rate = static_cast<double>(compressSize) / (originalSize * 8) * 100.0 ; 
-    }
-    
+
     cout << "COMPRESSRATE = " << fixed << setprecision(2) << rate << "%" << endl ; 
 
     if(verbose){
@@ -144,21 +153,28 @@ void HuffManTree::encode(const string& inputFile , const string& codeFile , cons
 }
 
 void HuffManTree::decode(const string& inputFile , const string& codeFile , const string& outFile , bool verbose){
-    ifstream codeIn(codeFile) ; 
+    ifstream codeIn(codeFile , ios::binary) ; 
     if(!codeIn){
         cerr << "ERROR: CANT OPEN CODE FILE" << endl ;
         return;
     }
     
     map<char , int> freqs ; 
-    string s ; 
-    int freq ; 
-    string code ; 
+    string keyStr, codeStr;
+    int freq;
+    long long DecodeChars = 0; 
     
-    while(codeIn >> s >> freq >> code){
-        char ch = static_cast<char>(stoi(s));
-        freqs[ch] = freq;
+    string Tag ; 
+    codeIn >> Tag ; 
+    if(Tag == "HEAD"){
+        codeIn >> DecodeChars ; 
     }
+
+    while(codeIn >> keyStr >> freq >> codeStr){
+        char c = static_cast<char>(stoi(keyStr));
+        freqs[c] = freq;
+    }
+
     codeIn.close() ; 
 
     if (freqs.empty()) {
@@ -168,7 +184,7 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
 
     buildTree(freqs) ; 
 
-    ifstream in(inputFile) ;
+    ifstream in(inputFile , ios::binary) ;
     ofstream out(outFile , ios::binary) ; 
 
     if(!in || !out){
@@ -176,21 +192,29 @@ void HuffManTree::decode(const string& inputFile , const string& codeFile , cons
         return ; 
     }
 
+
+    BitReader br(in) ;
+    long long decodedCount = 0 ;  
+
     NodePtr current = root ; 
     char ch ; 
     
-    while(in.get(ch)){
-        if(ch != '0' && ch != '1') continue ;
-        
-        if(ch == '0') current = current -> left ; 
-        else if(ch == '1') current = current -> right ; 
-        
+    while (decodedCount < DecodeChars) {
+
+        int bit = br.readBit();
+        if (bit == -1) break; 
+
+        if (bit == 0) current = current->left;
+        else current = current->right;
+
         if (!current) break; 
 
-        if(current -> isLeaf()){
-            char originalChar = current -> getChar() ; 
-            out.put(originalChar) ;         
-            current = root ; 
+        if (current->isLeaf()) {
+            if (decodedCount == DecodeChars)
+                break;
+            out.put(current->ch);
+            decodedCount++;
+            current = root;
         }
     }
 
@@ -215,7 +239,6 @@ string HuffManTree::getCode(const char& c) const{
     }
     return "";
 }
-
 
 void HuffManTree::showWPL() const { 
     int wpl = calcWPL(root , 0) ;
@@ -261,5 +284,42 @@ void HuffManTree::printTree(const NodePtr& node, const std::string& prefix, bool
 
         printTree(node->left, newPrefix, true); 
     }
+}
+
+
+void BitWriter::writeBit(int bit){
+    buffer = buffer << 1 ; 
+    if(bit){
+        buffer = buffer | 1 ; 
+    }
+    count++ ;
+    if(count == 8){
+        count = 0 ; 
+        out.put(buffer) ; 
+        buffer = 0 ; 
+    }
+
+}
+
+void BitWriter::flush() { 
+    if(count > 0){
+        buffer = buffer << (8 - count) ; 
+        out.put(buffer) ; 
+        count = 0 ; 
+        buffer = 0 ;
+    }
+}
+
+int BitReader::readBit(){
+    if(count == 0){
+        char c  ; 
+        if(!in.get(c)) return -1 ; 
+        buffer = static_cast<unsigned char>(c) ;
+        count = 8 ; 
+    }
+
+    int bit = (buffer >> (count - 1)) & 1 ; 
+    count -- ; 
+    return bit ;
 }
 

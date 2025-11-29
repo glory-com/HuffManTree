@@ -4,7 +4,9 @@
 using namespace std ;
 
 class Node ; 
-using NodePtr = std::shared_ptr<Node> ;
+class Bitwriter ; 
+using NodePtr = shared_ptr<Node> ;
+class HuffManTree ;
 
 class Node{
 public:
@@ -24,13 +26,40 @@ private:
 
 } ; 
 
-class HuffManTree{
-private: 
-    NodePtr root ; 
-    map<char , string> huffManCode ; 
-    map<char , int> freqMap ; 
-    long long originalSize ; 
-    long long compressSize ; 
+
+
+class BitWriter {
+private:
+    ostream& out;
+    unsigned char buffer;
+    int count;
+
+public:
+    BitWriter(ostream& os);
+    void writeBit(int bit);
+    void flush();
+};
+
+class BitReader {
+private:
+    std::ifstream& in;
+    unsigned char buffer;
+    int count; 
+public:
+    BitReader(std::ifstream& is) ;
+    
+    int readBit(); 
+};
+
+
+class HuffManTree {
+private:
+    NodePtr root;
+    map<char, string> huffManCode;
+    map<char, int> freqMap;
+    long long originalSize;
+    long long compressSize;
+    long long totalChars ;
 
     void generateCodes(const NodePtr& node , string str) ; 
     int calcWPL(const NodePtr& node , int depth) const ; 
@@ -47,6 +76,8 @@ public:
     void printTree(const NodePtr& node, const std::string& prefix, bool isLeft) const ; 
     void showTreeInfo() const ; 
 };
+
+
 
 
 
